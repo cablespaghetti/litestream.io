@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: myapp
+  name: wordpress
   labels:
-    app: myapp
+    app: wordpress
 spec:
   ports:
     - port: 80
@@ -11,4 +11,4 @@ spec:
     - port: 9090
       name: metrics
   selector:
-    app: myapp
+    app: wordpress

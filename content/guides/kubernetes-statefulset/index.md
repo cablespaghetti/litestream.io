@@ -1,5 +1,5 @@
 ---
-title: "Running as a sidecar container in a Kubernetes StatefulSet"
+title: "Running in Kubernetes"
 layout: docs
 date: 2021-03-07T21:25:53Z
 menu:
@@ -9,9 +9,7 @@ weight: 350
 ---
 
 
-This guide will get you running Litestream as a sidecar container in a Kubernetes StatefulSet, alongside your existing application using SQLite. This means that as long as your application is running, so will Litestream.
-
-{{< alert icon="⏱" text="This should take approximately 20 minutes to complete." >}}
+This guide will get you running Litestream as a sidecar container in a Kubernetes StatefulSet, alongside your existing application using SQLite. This means that as long as your application is running, so will Litestream. This guide assumes you already have an application using SQLite running in Kubernetes, but a full set of example YAML manifests will be provided.
 
 
 ## Prerequisites
@@ -19,35 +17,55 @@ This guide will get you running Litestream as a sidecar container in a Kubernete
 This guide assumes you have read the [_Getting Started_](/getting-started)
 tutorial already. Please read that to understand the basic operation of Litestream.
 
-It also assumes you already have a Kubernetes [StatefulSet](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) and that your SQLite database is stored on a [Volume](https://kubernetes.io/docs/concepts/storage/volumes/). However the YAML files for a full working example (minus the [Secret](#kubernetes-secret-for-aws-credentials)) are available [on GitHub](https://github.com/cablespaghetti/litestream.io/tree/develop/content/guides/kubernetes-statefulset).
+It also assumes you already have a Kubernetes [StatefulSet](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) and that your SQLite database is stored on a [Volume](https://kubernetes.io/docs/concepts/storage/volumes/). However the YAML files for a full working example are available [on GitHub](https://github.com/cablespaghetti/litestream.io/tree/develop/content/guides/kubernetes-statefulset).
 
-### Creating an S3 bucket
+You will also need [Helm](https://helm.sh/) installed on your local machine to deploy MinIO.
 
-If you don't already have an Amazon AWS account, you can go 
-[https://aws.amazon.com/](https://aws.amazon.com/) and click "Create Account".
-Once you have an account, you'll need to [create an AWS IAM user][iam] with
-_programmatic access_ and with `AmazonS3FullAccess` permissions. After creating
-the user, you should have an **access key id** and a **secret access key**. We
-will use those in one of the steps below.
+### Setting up MinIO
 
-You'll also need to create a bucket in AWS S3. You'll need to create a unique
-name for your bucket. In this guide, we'll name our bucket
-`"mybkt.litestream.io"` but replace that with your bucket name in the examples
-below.
+We'll use an instance of [MinIO](https://min.io/) running in our cluster, deployed using [minio-operator](https://github.com/minio/operator) for this example, using the operator's [Helm Chart](https://github.com/minio/operator/tree/master/helm/minio-operator)
 
-If you are running your Kubernetes cluster in AWS you might chose to use an IAM Role instead and a tool like [kiam](https://github.com/uswitch/kiam), [kube2iam](https://github.com/jtblin/kube2iam) or the [IAM Roles for service accounts](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html) feature of EKS. This will work just fine with Litestream, but for the sake of simplicity this guide will focus on IAM Users.
+1. Add the Helm chart repository
+```bash
+helm repo add minio https://operator.min.io/
+```
 
-[iam]: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_users_create.html
+2. Install the operator to your cluster
+```bash
+helm install --namespace minio-operator --create-namespace --generate-name minio/minio-operator
+```
+
+3. Create the MinIO cluster with default configuration in your current namespace
+```bash
+kubectl apply -f https://raw.githubusercontent.com/minio/operator/master/examples/tenant-lite.yaml
+```
+
+{{< alert icon="!" text="This creates 4 MinIO pods with 100GB storage each. You may wish to adjust this." >}}
+
+4. Wait for the minio pods to come up in your cluster (this might take a few minutes), then port forward to make minio available on your local machine with
+```bash
+kubectl port-forward svc/minio 4443:443
+```
+
+5. Open a web browser to <a href="https://localhost:4443/" target="_blank">https://localhost:4443/</a>, accept the certificate warning and enter the default credentials:
+
+```
+Username: minio
+Password: minio123
+```
+
+6. Click the "+" button in the lower right-hand corner and then click the
+_"Create Bucket"_ icon. Name your bucket, `"mybkt"`.
 
 
-## Kubernetes Secret for AWS Credentials
+## Kubernetes Secret for Credentials
 
-You must provide Litestream with the credentials for your AWS IAM User somehow. The best way built into Kubernetes is to use [Secrets](https://kubernetes.io/docs/concepts/configuration/secret/).
+You must provide Litestream with the credentials for your bucket somehow. Whilst we're using MinIO here with default credentials, this will usually be sensitive credentials. The best way built into Kubernetes is to use [Secrets](https://kubernetes.io/docs/concepts/configuration/secret/).
 
 To create a secret you can run a kubectl command like:
 
 ```sh
-kubectl create secret generic litestream --from-literal=AWS_ACCESS_KEY_ID="my-access-key-id" --from-literal=AWS_SECRET_ACCESS_KEY="my-secret-access-key"
+kubectl create secret generic litestream --from-literal=AWS_ACCESS_KEY_ID="minio" --from-literal=AWS_SECRET_ACCESS_KEY="minio123"
 ```
 
 
@@ -67,14 +85,11 @@ addr: ":9090"
 dbs:
   - path: /db/db.db
     replicas:
-      - url: s3://mybkt.litestream.io/db.db
-        region: us-east-1
-
+      - url: s3://mybkt.minio:443/db.db
 ```
 
 This configuration specifies that we want want Litestream to monitor our
-`db.db` database in a directory called `db` (where we have mounted the Persistent Volume) and continuously replicate it to
-our `mybkt.litestream.io` S3 bucket. We've also enabled the metrics endpoint which will come in useful if you want to monitor LiteStream with Prometheus.
+`db.db` database in a directory called `db` (where we have mounted the Persistent Volume) and continuously replicate it to our `mybkt` bucket on our minio cluster at https://minio. We've also enabled the metrics endpoint which will come in useful if you want to monitor LiteStream with Prometheus.
 
 After changing our configuration, we'll need to save it as a ConfigMap:
 
@@ -161,15 +176,6 @@ After applying this configuration you should be able to see Litestream start up 
 kubectl logs -f -c litestream myapp-0
 ```
 
-## Simulating a disaster
-
-...
-
-
-## Restoring our database
-
-
-...
 
 ## Further reading
 

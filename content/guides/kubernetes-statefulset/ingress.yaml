@@ -1,0 +1,23 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: wordpress
+  labels:
+    app: wordpress
+  annotations:
+    cert-manager.io/cluster-issuer: selfsigned 
+    nginx.ingress.kubernetes.io/from-to-www-redirect: "true"
+spec:
+  rules:
+  - host: mysite.com
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: wordpress
+          servicePort: 80
+  tls:
+  - hosts:
+    - mysite.com
+    secretName: wordpress-cert
+

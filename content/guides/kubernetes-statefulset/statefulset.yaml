@@ -1,29 +1,58 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: myapp
+  name: wordpress
 spec:
   selector:
     matchLabels:
-      app: myapp
-  serviceName: myapp
+      app: wordpress
+  serviceName: wordpress
   replicas: 1
   template:
     metadata:
       labels:
-        app: myapp
+        app: wordpress
     spec:
+      initContainers:
+      - name: init-wordpress
+        image: busybox
+        command:
+        - sh
+        - "-c"
+        - "wget -O /driver/db.php https://raw.githubusercontent.com/aaemnnosttv/wp-sqlite-db/master/src/db.php"
+        volumeMounts:
+        - name: dbdriver
+          mountPath: /driver
       containers:
-      - name: myapp
-        image: myapp:latest
+      - name: wordpress
+        image: wordpress:fpm-alpine
+        ports:
+        - name: php-fpm
+          containerPort: 9000
+        volumeMounts:
+        - name: dbdriver
+          mountPath: /usr/src/wordpress/wp-content/db.php
+          subPath: db.php
+        - name: wordpress-configmap
+          mountPath: /var/www/wp-config.php
+          subPath: wp-config.php
+        - name: database
+          mountPath: /var/www/db
+        - name: html
+          mountPath: /var/www/html
+      - name: nginx
+        image: nginx:1.18-alpine
         ports:
         - name: http
-          containerPort: 8080
+          containerPort: 80
         volumeMounts:
-        - name: database
-          mountPath: /myapp/db
+        - name: configmap
+          mountPath: /etc/nginx/conf.d/default.conf
+          subPath: default.conf
+        - name: html
+          mountPath: /var/www/html
       - name: litestream
-        image: litestream/litestream:0.3.3
+        image: cablespaghetti/litestream:0.3.3
         volumeMounts:
         - name: database
           mountPath: /db
@@ -49,7 +78,12 @@ spec:
       volumes:
       - name: configmap
         configMap:
-          name: myapp
+          name: litestream
+      - name: dbdriver
+        emptyDir: {}
+      - name: wordpress-configmap
+        configMap:
+          name: wordpress
   volumeClaimTemplates:
   - metadata:
       name: database
@@ -58,3 +92,11 @@ spec:
       resources:
         requests:
           storage: 100Mi
+  - metadata:
+      name: html
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 500Mi
+

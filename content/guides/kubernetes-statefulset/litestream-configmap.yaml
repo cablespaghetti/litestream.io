@@ -1,14 +1,13 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: myapp
+  name: litestream
   labels:
-    app: myapp
+    app: wordpress
 data:
   litestream.yml: |
     addr: ":9090"
     dbs:
       - path: /db/db.db
         replicas:
-          - url: s3://mybkt.litestream.io/db.db
-            region: us-east-1
+          - url: s3://mybkt.minio:443/db.db
