@@ -10,4 +10,5 @@ data:
     dbs:
       - path: /db/db.db
         replicas:
-          - url: s3://mybkt.minio:443/db.db
+          - url: s3://mybkt/db.db
+            endpoint: https://minio.default.svc.cluster.local
